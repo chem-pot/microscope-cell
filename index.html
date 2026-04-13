@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>현미경 시뮬레이션</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --bg: #0f1117;
+  --panel: #1a1d26;
+  --card: #22263a;
+  --border: #2e3450;
+  --blue: #4a9eff;
+  --blue-dim: #1e3a5f;
+  --green: #3ddc84;
+  --amber: #ffb347;
+  --red: #ff5c5c;
+  --red-dim: #3a1a1a;
+  --teal: #38d9c0;
+  --text: #e8eaf6;
+  --text-dim: #7986cb;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+header h1 { font-size: 1rem; font-weight: 700; letter-spacing: 0.05em; color: var(--blue); }
+.badge {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  background: var(--blue-dim);
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* ── Layout ── */
+.layout { display: flex; flex: 1; min-height: 0; }
+
+/* ── Viewport ── */
+.viewport-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: #080a10;
+  position: relative;
+  min-width: 0;
+}
+
+.microscope-frame {
+  position: relative;
+  width: min(420px, 88vw);
+  aspect-ratio: 1;
+}
+
+.lens-outer {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3a4060 0%, #1a1d2e 40%, #0a0b10 100%);
+  box-shadow:
+    0 0 0 6px #1e2235,
+    0 0 0 10px #2a2f45,
+    0 0 0 14px #1a1d26,
+    0 0 60px rgba(74,158,255,0.15),
+    inset 0 0 80px rgba(0,0,0,0.8);
+  overflow: hidden;
+  position: relative;
+  cursor: crosshair;
+}
+
+.slide-layer {
+  position: absolute;
+  width: 300%; height: 300%;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  transition: filter 0.3s ease;
+}
+
+.lens-glare {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(ellipse at 35% 25%, rgba(255,255,255,0.06) 0%, transparent 60%);
+  pointer-events: none; z-index: 10;
+}
+
+.mag-hud {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  font-family: 'Share Tech Mono', monospace; font-size: 0.85rem; color: var(--green);
+  background: rgba(0,0,0,0.6); padding: 3px 12px; border-radius: 20px;
+  border: 1px solid rgba(61,220,132,0.3); z-index: 20; pointer-events: none;
+}
+
+.crosshair {
+  position: absolute; inset: 0; border-radius: 50%;
+  pointer-events: none; z-index: 15; opacity: 0.15;
+  display: flex; align-items: center; justify-content: center;
+}
+.crosshair::before, .crosshair::after { content:''; position:absolute; background:var(--blue); }
+.crosshair::before { width:1px; height:60%; }
+.crosshair::after  { width:60%; height:1px; }
+
+.focus-overlay {
+  position: absolute; inset: 0; border-radius: 50%;
+  pointer-events: none; z-index: 9; background: rgba(10,11,18,0.0); transition: background 0.1s;
+}
+
+.drag-hint {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  font-size: 0.65rem; color: rgba(121,134,203,0.7); pointer-events: none;
+  z-index: 20; font-family: 'Share Tech Mono', monospace; white-space: nowrap; transition: opacity 0.5s;
+}
+
+/* ── 사이드 컨트롤 ── */
+.controls {
+  width: 230px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.ctrl-section h3 {
+  font-size: 0.68rem; font-weight: 500; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px;
+}
+
+.mag-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mag-btn {
+  padding: 10px 4px; border-radius: 8px; border: 1.5px solid var(--border);
+  background: var(--card); color: var(--text-dim);
+  font-family: 'Share Tech Mono', monospace; font-size: 0.8rem;
+  cursor: pointer; transition: all 0.2s; text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.mag-btn.active { border-color: var(--blue); background: var(--blue-dim); color: var(--blue); }
+
+.slider-wrap { display: flex; flex-direction: column; gap: 7px; }
+.slider-label { display: flex; justify-content: space-between; font-size: 0.74rem; }
+.slider-label span:last-child { font-family: 'Share Tech Mono', monospace; color: var(--blue); }
+
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 4px;
+  border-radius: 2px; background: var(--border); outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--blue);
+  border: 2px solid #0f1117; box-shadow: 0 0 6px rgba(74,158,255,0.5);
+}
+
+.light-btns { display: flex; gap: 6px; }
+.light-btn {
+  flex: 1; padding: 8px 4px; border-radius: 8px; border: 1.5px solid var(--border);
+  background: var(--card); color: var(--text-dim); font-size: 0.72rem;
+  cursor: pointer; transition: all 0.2s; text-align: center; -webkit-tap-highlight-color: transparent;
+}
+.light-btn.active { border-color: var(--amber); background: rgba(255,179,71,0.15); color: var(--amber); }
+
+.filter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 6px 10px; border-radius: 20px; border: 1.5px solid var(--border);
+  background: var(--card); color: var(--text-dim); font-size: 0.68rem;
+  cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+}
+.filter-btn.active { border-color: var(--green); color: var(--green); background: rgba(61,220,132,0.1); }
+
+.info-box {
+  background: var(--card); border-radius: 10px; padding: 12px;
+  border: 1px solid var(--border); font-size: 0.72rem; line-height: 1.7; color: var(--text-dim);
+}
+.info-box strong { color: var(--text); display: block; margin-bottom: 4px; }
+
+/* ── 삼투 실험 패널 (조건부 표시) ── */
+.osmosis-panel {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--card);
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  animation: fadeIn 0.3s ease;
+}
+.osmosis-panel.visible { display: flex; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+.osmosis-panel h3 {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--teal); margin-bottom: 2px;
+}
+
+.sol-btns { display: flex; flex-direction: column; gap: 6px; }
+.sol-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: 8px;
+  border: 1.5px solid var(--border); background: var(--bg);
+  color: var(--text-dim); font-size: 0.75rem; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.sol-btn .sdot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.sol-btn .sconc { margin-left: auto; font-family: 'Share Tech Mono', monospace; font-size: 0.68rem; }
+.sol-btn.s-hypo  { border-color: var(--blue);  background: var(--blue-dim);  color: var(--blue);  }
+.sol-btn.s-iso   { border-color: var(--green); background: rgba(61,220,132,0.1); color: var(--green); }
+.sol-btn.s-hyper { border-color: var(--red);   background: var(--red-dim);   color: var(--red);   }
+
+.play-btn {
+  width: 100%; padding: 10px; border-radius: 8px; border: none;
+  background: var(--blue); color: white;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 0.82rem; font-weight: 700;
+  cursor: pointer; transition: background 0.2s; -webkit-tap-highlight-color: transparent;
+}
+.play-btn.paused { background: var(--text-dim); }
+
+.state-badge {
+  text-align: center; font-size: 0.78rem; font-weight: 700;
+  padding: 7px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); transition: all 0.3s;
+}
+
+.progress-bar-wrap { display: flex; flex-direction: column; gap: 4px; }
+.progress-label { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; }
+.progress-bar { width: 100%; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--teal)); border-radius: 2px; transition: width 0.1s linear; }
+
+.water-arrow {
+  text-align: center; font-size: 0.72rem; color: var(--text-dim); padding: 4px 0;
+  display: none;
+}
+.water-arrow.visible { display: block; }
+.arrow-anim span { animation: blink 0.7s infinite; }
+.arrow-anim span:nth-child(2) { animation-delay: 0.14s; }
+.arrow-anim span:nth-child(3) { animation-delay: 0.28s; }
+@keyframes blink { 0%,100%{opacity:0.1} 50%{opacity:1} }
+
+/* ── 표본 바 ── */
+.specimen-bar {
+  display: flex; gap: 8px; padding: 12px 16px;
+  background: var(--panel); border-top: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
+}
+.specimen-bar::-webkit-scrollbar { display: none; }
+
+.spec-group-label {
+  flex-shrink: 0; display: flex; align-items: center;
+  font-size: 0.6rem; color: var(--text-dim); font-family: 'Share Tech Mono', monospace;
+  padding: 0 4px; white-space: nowrap;
+}
+.spec-divider {
+  flex-shrink: 0; width: 1px; background: var(--border); margin: 4px 2px;
+}
+
+.spec-btn {
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 7px 12px; border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--card); color: var(--text-dim);
+  font-size: 0.68rem; font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+}
+.spec-btn .icon { font-size: 1.3rem; }
+.spec-btn.active { border-color: var(--blue); background: var(--blue-dim); color: var(--text); }
+.spec-btn.osmosis-spec.active { border-color: var(--teal); background: rgba(56,217,192,0.15); }
+
+/* ── 모바일 ── */
+@media (max-width: 700px) {
+  .controls { display: none; }
+  .mobile-ctrl { display: flex !important; }
+}
+.mobile-ctrl {
+  display: none; flex-direction: row;
+  overflow-x: auto; scrollbar-width: none;
+  background: var(--panel); border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.mobile-ctrl::-webkit-scrollbar { display: none; }
+.m-section { flex-shrink: 0; padding: 10px 14px; border-right: 1px solid var(--border); }
+.m-section h4 { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 7px; }
+.m-row { display: flex; gap: 5px; }
+
+/* 모바일 삼투 패널 */
+.mobile-osmosis {
+  display: none; flex-direction: column; gap: 8px;
+  padding: 10px 14px;
+  background: var(--panel); border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.mobile-osmosis.visible { display: flex; }
+.mobile-osmosis .sol-btns { flex-direction: row; flex-wrap: wrap; }
+.mobile-osmosis .sol-btn { flex: 1; min-width: 80px; justify-content: center; }
+.mobile-osmosis .sconc { display: none; }
+
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔬 현미경 시뮬레이션</h1>
+  <span class="badge">통합과학 고1</span>
+</header>
+
+<div class="layout">
+  <!-- ── 뷰포트 ── -->
+  <div class="viewport-wrap">
+    <div class="microscope-frame">
+      <div class="lens-outer" id="lensOuter">
+        <canvas id="specimenCanvas" class="slide-layer"></canvas>
+        <div class="focus-overlay" id="focusOverlay"></div>
+        <div class="lens-glare"></div>
+        <div class="crosshair"></div>
+        <div class="mag-hud" id="magHud">×40</div>
+        <div class="drag-hint" id="dragHint">← 드래그하여 이동 →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 사이드 컨트롤 ── -->
+  <div class="controls" id="sideControls">
+
+    <div class="ctrl-section">
+      <h3>🔭 배율</h3>
+      <div class="mag-btns">
+        <button class="mag-btn active" data-mag="40">×40</button>
+        <button class="mag-btn" data-mag="100">×100</button>
+        <button class="mag-btn" data-mag="200">×200</button>
+        <button class="mag-btn" data-mag="400">×400</button>
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>🎛 초점 조절</h3>
+      <div class="slider-wrap">
+        <div class="slider-label"><span>조동 나사</span><span id="coarseVal">50</span></div>
+        <input type="range" id="coarseSlider" min="0" max="100" value="50">
+      </div>
+      <div class="slider-wrap" style="margin-top:10px">
+        <div class="slider-label"><span>미동 나사</span><span id="fineVal">50</span></div>
+        <input type="range" id="fineSlider" min="0" max="100" value="50">
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>💡 조명</h3>
+      <div class="light-btns">
+        <button class="light-btn active" data-light="normal">표준</button>
+        <button class="light-btn" data-light="dim">어두움</button>
+        <button class="light-btn" data-light="bright">밝음</button>
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>🎨 염색 필터</h3>
+      <div class="filter-btns">
+        <button class="filter-btn active" data-filter="none">없음</button>
+        <button class="filter-btn" data-filter="hematoxylin">H&E</button>
+        <button class="filter-btn" data-filter="gram">그람</button>
+        <button class="filter-btn" data-filter="iodine">아이오딘</button>
+      </div>
+    </div>
+
+    <!-- 삼투 실험 패널 (삼투 표본일 때만 표시) -->
+    <div class="osmosis-panel" id="osmosisPanelSide">
+      <h3>🧪 삼투 실험</h3>
+      <div class="sol-btns" id="solBtnsSide"></div>
+      <button class="play-btn" id="playBtnSide">▶ 시작</button>
+      <div class="state-badge" id="stateBadgeSide">—</div>
+      <div class="water-arrow" id="waterArrowSide">
+        물 이동: <span class="arrow-anim"><span>▶</span><span>▶</span><span>▶</span></span>
+        <span id="waterDirSide"></span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-label"><span id="progLabelSide">진행</span><span id="progTimeSide">0s</span></div>
+        <div class="progress-bar"><div class="progress-fill" id="progFillSide" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>📋 표본 정보</h3>
+      <div class="info-box" id="infoBox">
+        <strong>[삼투 실험] 양파 표피</strong>
+        용액을 선택하고 ▶ 시작을 누르세요.<br>원형질 분리와 복귀를 관찰합니다.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── 표본 선택 바 ── -->
+<div class="specimen-bar" id="specimenBar">
+  <span class="spec-group-label">📐 삼투 실험 표본</span>
+  <button class="spec-btn osmosis-spec active" data-specimen="osmosis_onion"><span class="icon">🧅</span>양파 표피<br>(삼투)</button>
+  <button class="spec-btn osmosis-spec" data-specimen="osmosis_rbc"><span class="icon">🩸</span>적혈구<br>(삼투)</button>
+</div>
+
+<!-- ── 모바일 컨트롤 ── -->
+<div class="mobile-ctrl" id="mobileCtrl">
+  <div class="m-section">
+    <h4>배율</h4>
+    <div class="m-row">
+      <button class="mag-btn active" data-mag="40">×40</button>
+      <button class="mag-btn" data-mag="100">×100</button>
+      <button class="mag-btn" data-mag="200">×200</button>
+      <button class="mag-btn" data-mag="400">×400</button>
+    </div>
+  </div>
+  <div class="m-section">
+    <h4>조동 나사</h4>
+    <input type="range" id="mCoarseSlider" min="0" max="100" value="50" style="width:110px">
+  </div>
+  <div class="m-section">
+    <h4>미동 나사</h4>
+    <input type="range" id="mFineSlider" min="0" max="100" value="50" style="width:110px">
+  </div>
+  <div class="m-section">
+    <h4>조명</h4>
+    <div class="m-row">
+      <button class="light-btn active" data-light="normal">표준</button>
+      <button class="light-btn" data-light="dim">어두움</button>
+      <button class="light-btn" data-light="bright">밝음</button>
+    </div>
+  </div>
+  <div class="m-section">
+    <h4>염색</h4>
+    <div class="m-row">
+      <button class="filter-btn active" data-filter="none">없음</button>
+      <button class="filter-btn" data-filter="hematoxylin">H&E</button>
+      <button class="filter-btn" data-filter="gram">그람</button>
+      <button class="filter-btn" data-filter="iodine">아이오딘</button>
+    </div>
+  </div>
+</div>
+
+<!-- 모바일 삼투 패널 -->
+<div class="mobile-osmosis" id="osmosisPanelMobile">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:0.7rem;color:var(--teal);font-weight:700;white-space:nowrap;">🧪 삼투 실험</span>
+    <div class="sol-btns" id="solBtnsMobile" style="flex-direction:row;flex-wrap:wrap;flex:1;gap:5px;"></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button class="play-btn" id="playBtnMobile" style="width:auto;padding:8px 16px;flex-shrink:0;">▶ 시작</button>
+    <div class="state-badge" id="stateBadgeMobile" style="flex:1;min-width:100px;font-size:0.72rem;">—</div>
+    <div style="display:flex;flex-direction:column;gap:3px;min-width:120px;">
+      <div class="progress-bar"><div class="progress-fill" id="progFillMobile" style="width:0%"></div></div>
+      <div style="font-size:0.6rem;color:var(--text-dim);font-family:'Share Tech Mono',monospace;" id="progTimeMobile">0s</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════
+//  유틸
+// ══════════════════════════
+function seededRand(seed) {
+  let s = seed >>> 0;
+  return () => { s = Math.imul(1664525,s)+1013904223>>>0; return s/0xFFFFFFFF; };
+}
+function rgba(r,g,b,a=1){ return `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${a})`; }
+
+function getFilterColor(base, filter) {
+  if (filter==='hematoxylin') return {r:base.r*0.4+80,g:base.g*0.3,b:base.b*0.8+100};
+  if (filter==='gram')        return {r:base.r*0.6+60,g:base.g*0.2,b:base.b*0.5+120};
+  if (filter==='iodine')      return {r:base.r*0.7+80,g:base.g*0.5+20,b:base.b*0.1};
+  return base;
+}
+
+// ══════════════════════════
+//  상태
+// ══════════════════════════
+const state = {
+  specimen: 'osmosis_onion',
+  mag: 40,
+  coarse: 50,
+  fine: 50,
+  light: 'normal',
+  filter: 'none',
+  offsetX: 0, offsetY: 0,
+  dragging: false, lastX: 0, lastY: 0,
+  // 삼투 실험 상태
+  osmosisSol: null,
+  osmosisT: 0,
+  osmosisPlaying: false,
+  osmosisAnimId: null,
+  osmosisLastTime: null,
+  osmosisSpeed: 1,
+};
+
+const OSMOSIS_DURATION = 18000; // 18초 (speed=1 기준)
+
+// ══════════════════════════
+//  표본 정보
+// ══════════════════════════
+const specimenInfo = {
+  onion:        { name:'양파 표피 세포',   desc:'세포벽, 핵, 세포막 관찰.<br>배율 ×100 이상에서 핵이 관찰됩니다.' },
+  blood:        { name:'혈액 도말 표본',   desc:'적혈구(무핵, 이중오목형), 백혈구, 혈소판.<br>×400에서 구분 가능합니다.' },
+  leaf:         { name:'잎의 횡단면',      desc:'표피층, 책상 조직, 해면 조직, 엽록체 관찰.<br>기공과 공변세포도 확인하세요.' },
+  bacteria:     { name:'세균 표본',        desc:'구균/간균/나선균 형태.<br>×400 이상에서 뚜렷이 관찰됩니다.' },
+  crystal:      { name:'소금 결정 구조',   desc:'NaCl 입방 결정 구조.<br>편광 필터 아래 다른 패턴이 보입니다.' },
+  cheek:        { name:'구강 상피세포',    desc:'편평 상피세포. 핵과 세포막 관찰.<br>아이오딘 염색 시 핵이 뚜렷합니다.' },
+  osmosis_onion:{ name:'[삼투 실험] 양파 표피', desc:'<span style="color:var(--teal)">아래 패널</span>에서 용액을 선택하고 ▶ 시작을 누르세요.<br>원형질 분리와 복귀를 관찰합니다.' },
+  osmosis_rbc:  { name:'[삼투 실험] 적혈구',     desc:'<span style="color:var(--teal)">아래 패널</span>에서 용액을 선택하고 ▶ 시작을 누르세요.<br>삼투에 의한 적혈구 모양 변화를 관찰합니다.' },
+};
+
+const osmosisSolConfig = {
+  osmosis_onion: [
+    { sol:'hyper', label:'10% 소금물', conc:'고장액', color:'#ff5c5c', cls:'s-hyper' },
+    { sol:'iso',   label:'증류수 (복귀)', conc:'저장액', color:'#4a9eff', cls:'s-hypo' },
+  ],
+  osmosis_rbc: [
+    { sol:'hypo',  label:'증류수', conc:'저장액 0%', color:'#4a9eff', cls:'s-hypo' },
+    { sol:'iso',   label:'생리식염수', conc:'등장액 0.9%', color:'#3ddc84', cls:'s-iso' },
+    { sol:'hyper', label:'진한 소금물', conc:'고장액 10%', color:'#ff5c5c', cls:'s-hyper' },
+  ],
+};
+
+// ══════════════════════════
+//  Canvas 설정
+// ══════════════════════════
+const canvas = document.getElementById('specimenCanvas');
+const ctx    = canvas.getContext('2d');
+const lensOuter = document.getElementById('lensOuter');
+
+function resizeCanvas() {
+  const size = lensOuter.offsetWidth;
+  canvas.width  = size * 3;
+  canvas.height = size * 3;
+  canvas.style.width  = size * 3 + 'px';
+  canvas.style.height = size * 3 + 'px';
+  drawSpecimen();
+}
+
+// ══════════════════════════
+//  표본 그리기 (일반)
+// ══════════════════════════
+function drawSpecimen() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  if (state.specimen === 'osmosis_onion') {
+    drawOsmosisOnion(W, H, state.osmosisT, state.osmosisSol || 'hyper');
+  } else if (state.specimen === 'osmosis_rbc') {
+    drawOsmosisRBC(W, H, state.osmosisT, state.osmosisSol || 'iso');
+  } else {
+    const fns = { onion, blood, leaf, bacteria, crystal, cheek };
+    fns[state.specimen]?.(W, H, state.mag, state.filter);
+  }
+}
+
+// ── 양파 표피 (일반) ──
+function onion(W, H, mag, filter) {
+  const bg = getFilterColor({r:245,g:235,b:210}, filter);
+  ctx.fillStyle = rgba(bg.r,bg.g,bg.b); ctx.fillRect(0,0,W,H);
+  const r = seededRand(42);
+  const cols = mag<=40?8:mag<=100?5:mag<=200?3:2;
+  const rows = mag<=40?12:mag<=100?8:mag<=200?5:3;
+  const cw = W/cols, ch = H/rows;
+  const wallC = getFilterColor({r:160,g:130,b:80},filter);
+  const cellC = getFilterColor({r:230,g:218,b:190},filter);
+  const nucC  = getFilterColor({r:80,g:60,b:40},filter);
+  for (let row=-1;row<rows+2;row++) for (let col=-1;col<cols+2;col++) {
+    const jx=(r()-0.5)*cw*0.2, jy=(r()-0.5)*ch*0.2;
+    const x=col*cw+jx, y=row*ch+jy, w=cw*0.88, h=ch*0.88;
+    ctx.fillStyle=rgba(cellC.r,cellC.g,cellC.b,0.5);
+    ctx.beginPath(); ctx.roundRect(x+2,y+2,w-4,h-4,4); ctx.fill();
+    ctx.strokeStyle=rgba(wallC.r,wallC.g,wallC.b,0.85);
+    ctx.lineWidth=mag<=40?1.5:2;
+    ctx.beginPath(); ctx.roundRect(x+2,y+2,w-4,h-4,4); ctx.stroke();
+    if (mag>=100) {
+      const nx=x+w*0.4+r()*w*0.2, ny=y+h*0.4+r()*h*0.2, nr=Math.min(w,h)*(0.08+r()*0.04);
+      ctx.fillStyle=rgba(nucC.r,nucC.g,nucC.b,mag>=200?0.8:0.6);
+      ctx.beginPath(); ctx.ellipse(nx,ny,nr,nr*0.8,r()*Math.PI,0,Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+// ── 혈액 (일반) ──
+function blood(W, H, mag, filter) {
+  const bg=getFilterColor({r:255,g:245,b:245},filter);
+  ctx.fillStyle=rgba(bg.r,bg.g,bg.b); ctx.fillRect(0,0,W,H);
+  const r=seededRand(17);
+  const rbc=getFilterColor({r:220,g:60,b:60},filter);
+  const wbc=getFilterColor({r:180,g:160,b:220},filter);
+  const rbcCount=mag<=40?300:mag<=100?120:mag<=200?50:20;
+  const rs=W/(mag<=40?60:mag<=100?30:mag<=200?18:10);
+  for (let i=0;i<rbcCount;i++) {
+    const x=r()*W,y=r()*H,sz=rs*(0.8+r()*0.4);
+    ctx.save(); ctx.translate(x,y); ctx.rotate(r()*Math.PI);
+    const g=ctx.createRadialGradient(0,0,sz*0.1,0,0,sz);
+    g.addColorStop(0,rgba(rbc.r,rbc.g,rbc.b,0.25));
+    g.addColorStop(0.6,rgba(rbc.r,rbc.g,rbc.b,0.85));
+    g.addColorStop(1,rgba(rbc.r*0.7,rbc.g*0.5,rbc.b*0.5,0.9));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(0,0,sz,sz*0.7,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  if (mag>=100) {
+    const n=mag<=100?3:2;
+    for (let i=0;i<n;i++) {
+      const x=0.2*W+r()*0.6*W,y=0.2*H+r()*0.6*H,ws=rs*1.8;
+      ctx.fillStyle=rgba(wbc.r,wbc.g,wbc.b,0.5);
+      ctx.beginPath(); ctx.arc(x,y,ws,0,Math.PI*2); ctx.fill();
+      const lobes=3+Math.floor(r()*2);
+      for (let l=0;l<lobes;l++) {
+        const a=(l/lobes)*Math.PI*2;
+        ctx.fillStyle=rgba(80,60,140,0.45);
+        ctx.beginPath(); ctx.arc(x+Math.cos(a)*ws*0.4,y+Math.sin(a)*ws*0.4,ws*0.25,0,Math.PI*2); ctx.fill();
+      }
+    }
+  }
+}
+
+// ── 잎 단면 ──
+function leaf(W, H, mag, filter) {
+  const layers=[
+    {y:0,h:0.06,r:60,g:180,b:90},{y:0.06,h:0.30,r:40,g:160,b:60},
+    {y:0.36,h:0.45,r:90,g:190,b:100},{y:0.81,h:0.12,r:60,g:180,b:90},{y:0.93,h:0.07,r:100,g:140,b:80},
+  ];
+  const r=seededRand(99);
+  layers.forEach(l=>{ const c=getFilterColor({r:l.r,g:l.g,b:l.b},filter); ctx.fillStyle=rgba(c.r,c.g,c.b,0.8); ctx.fillRect(0,l.y*H,W,l.h*H); });
+  const chlCount=mag<=40?80:mag<=100?150:mag<=200?200:250;
+  const chlSize=W/(mag<=40?60:mag<=100?40:mag<=200?25:15);
+  const ch=getFilterColor({r:30,g:140,b:50},filter);
+  for (let i=0;i<chlCount;i++) { const x=r()*W,y=(0.06+r()*0.7)*H; ctx.fillStyle=rgba(ch.r,ch.g,ch.b,0.8); ctx.beginPath(); ctx.ellipse(x,y,chlSize,chlSize*0.5,r()*Math.PI,0,Math.PI*2); ctx.fill(); }
+  if (mag>=100) {
+    const st=mag<=100?2:mag<=200?3:4;
+    for (let i=0;i<st;i++) {
+      const x=(0.15+i*(0.7/st)+r()*0.1)*W,y=0.83*H,w=W/12;
+      ctx.fillStyle=rgba(20,60,20,0.6); ctx.beginPath(); ctx.ellipse(x,y,w*0.3,w*0.6,0,0,Math.PI*2); ctx.fill();
+      const gc=getFilterColor({r:50,g:160,b:70},filter);
+      ctx.fillStyle=rgba(gc.r,gc.g,gc.b,0.7);
+      ctx.beginPath(); ctx.ellipse(x-w*0.35,y,w*0.25,w*0.55,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x+w*0.35,y,w*0.25,w*0.55,0,0,Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+// ── 세균 ──
+function bacteria(W, H, mag, filter) {
+  const bg=getFilterColor({r:248,g:248,b:252},filter);
+  ctx.fillStyle=rgba(bg.r,bg.g,bg.b); ctx.fillRect(0,0,W,H);
+  const r=seededRand(55);
+  const bc=getFilterColor({r:80,g:120,b:200},filter);
+  const count=mag<=40?500:mag<=100?200:mag<=200?80:30;
+  const size=W/(mag<=40?120:mag<=100?60:mag<=200?30:16);
+  for (let i=0;i<count*0.4;i++) { const x=r()*W,y=r()*H; ctx.fillStyle=rgba(bc.r,bc.g,bc.b,0.75); ctx.beginPath(); ctx.arc(x,y,size,0,Math.PI*2); ctx.fill(); }
+  for (let i=0;i<count*0.4;i++) { const x=r()*W,y=r()*H,a=r()*Math.PI; ctx.save(); ctx.translate(x,y); ctx.rotate(a); ctx.fillStyle=rgba(bc.r,bc.g*0.8,bc.b*1.1,0.7); ctx.beginPath(); ctx.roundRect(-size*2,-size,size*4,size*2,size); ctx.fill(); ctx.restore(); }
+  if (mag>=100) for (let i=0;i<count*0.2;i++) { const x=r()*W,y=r()*H; ctx.save(); ctx.translate(x,y); ctx.strokeStyle=rgba(bc.r*1.1,bc.g*0.7,bc.b*0.8,0.7); ctx.lineWidth=size; ctx.beginPath(); for (let t=0;t<Math.PI*3;t+=0.1) { const px=t*size*1.5-size*7,py=Math.sin(t)*size*2; t===0?ctx.moveTo(px,py):ctx.lineTo(px,py); } ctx.stroke(); ctx.restore(); }
+}
+
+// ── 결정 ──
+function crystal(W, H, mag, filter) {
+  const bg=getFilterColor({r:240,g:248,b:255},filter);
+  ctx.fillStyle=rgba(bg.r,bg.g,bg.b); ctx.fillRect(0,0,W,H);
+  const r=seededRand(77);
+  const step=W/(mag<=40?8:mag<=100?5:mag<=200?3:2);
+  for (let x=0;x<W+step;x+=step) for (let y=0;y<H+step;y+=step) {
+    const jx=(r()-0.5)*step*0.1,jy=(r()-0.5)*step*0.1,cx=x+jx,cy=y+jy;
+    const c=filter==='none'?{r:180+r()*60,g:210+r()*40,b:235+r()*20}:getFilterColor({r:180+r()*60,g:210+r()*40,b:235+r()*20},filter);
+    ctx.strokeStyle=rgba(c.r*0.6,c.g*0.6,c.b*0.6,0.6); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(cx-step*0.5,cy); ctx.lineTo(cx+step*0.5,cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,cy-step*0.5); ctx.lineTo(cx,cy+step*0.5); ctx.stroke();
+    ctx.fillStyle=rgba(c.r,c.g,c.b,0.4); ctx.beginPath(); ctx.rect(cx-step*0.48,cy-step*0.48,step*0.96,step*0.96); ctx.fill();
+  }
+}
+
+// ── 구강 상피 ──
+function cheek(W, H, mag, filter) {
+  const bg=getFilterColor({r:255,g:248,b:240},filter);
+  ctx.fillStyle=rgba(bg.r,bg.g,bg.b); ctx.fillRect(0,0,W,H);
+  const r=seededRand(33);
+  const cellC=getFilterColor({r:255,g:220,b:200},filter);
+  const nucC=getFilterColor({r:180,g:80,b:80},filter);
+  const count=mag<=40?40:mag<=100?20:mag<=200?8:4;
+  const cellSize=W/(mag<=40?6:mag<=100?4:mag<=200?2.5:1.8);
+  for (let i=0;i<count;i++) {
+    const x=r()*W,y=r()*H,w=cellSize*(0.8+r()*0.4),h=cellSize*(0.6+r()*0.4),a=r()*Math.PI;
+    ctx.save(); ctx.translate(x,y); ctx.rotate(a);
+    ctx.fillStyle=rgba(cellC.r,cellC.g,cellC.b,0.4); ctx.beginPath(); ctx.ellipse(0,0,w,h,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=rgba(cellC.r*0.7,cellC.g*0.7,cellC.b*0.7,0.5); ctx.lineWidth=1.5; ctx.stroke();
+    if (mag>=100) { ctx.fillStyle=rgba(nucC.r,nucC.g,nucC.b,filter==='iodine'?0.85:0.6); ctx.beginPath(); ctx.ellipse(0,0,w*0.12,h*0.12,0,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════
+//  삼투 실험 그리기
+// ══════════════════════════
+
+// ── 양파 삼투 ──
+function drawOsmosisOnion(W, H, t, sol) {
+  ctx.fillStyle='#0d0e18'; ctx.fillRect(0,0,W,H);
+  const R=seededRand(42);
+  const cols=state.mag<=40?6:state.mag<=100?4:3;
+  const rows=state.mag<=40?8:state.mag<=100?6:4;
+  const cw=W/cols, ch=H/rows;
+  const filter=state.filter;
+  const wallC=getFilterColor({r:160,g:130,b:80},filter);
+
+  for (let row=-1;row<rows+2;row++) for (let col=-1;col<cols+2;col++) {
+    const jx=(R()-0.5)*cw*0.12, jy=(R()-0.5)*ch*0.12;
+    const x=col*cw+jx, y=row*ch+jy, w=cw*0.9, h=ch*0.9;
+
+    // 세포벽 (항상 고정)
+    ctx.strokeStyle=rgba(wallC.r,wallC.g,wallC.b,0.9);
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.roundRect(x+1,y+1,w-2,h-2,4); ctx.stroke();
+
+    // 원형질 수축/팽창
+    let shrink=0;
+    if (sol==='hyper') shrink=t*0.27;       // 분리
+    else               shrink=(1-t)*0.27;    // 복귀
+
+    const pw=w*(1-shrink*2), ph=h*(1-shrink*2);
+    const cx=x+w/2, cy=y+h/2;
+
+    // 분리 공간 (어두운 빈 공간)
+    if (shrink>0.01) {
+      ctx.fillStyle=rgba(15,18,35,0.9);
+      ctx.beginPath(); ctx.roundRect(x+1,y+1,w-2,h-2,4); ctx.fill();
+    }
+
+    // 원형질 내용물 색
+    const vacAlpha=sol==='hyper'?(0.55+t*0.25):(0.8-t*0.25);
+    const vacR=sol==='hyper'?(200-t*50):(150+t*50);
+    const vacG=sol==='hyper'?(175-t*40):(140+t*35);
+    const vacB=sol==='hyper'?(120-t*30):(95+t*25);
+    const fc=getFilterColor({r:vacR,g:vacG,b:vacB},filter);
+    ctx.fillStyle=rgba(fc.r,fc.g,fc.b,vacAlpha);
+    ctx.beginPath(); ctx.roundRect(cx-pw/2,cy-ph/2,pw,ph,3); ctx.fill();
+
+    // 원형질막 선
+    ctx.strokeStyle=sol==='hyper'
+      ?rgba(220,100,60,0.4+t*0.5)
+      :rgba(80,160,220,0.3+t*0.6);
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.roundRect(cx-pw/2,cy-ph/2,pw,ph,3); ctx.stroke();
+
+    // 핵 (×100 이상)
+    if (state.mag>=100 && pw>18) {
+      const nc=getFilterColor({r:80,g:55,b:30},filter);
+      ctx.fillStyle=rgba(nc.r,nc.g,nc.b,0.75);
+      ctx.beginPath(); ctx.ellipse(cx,cy,pw*0.11,ph*0.11,0,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // 렌즈 테두리 어두움
+  const edgeG=ctx.createRadialGradient(W/2,H/2,W*0.35,W/2,H/2,W*0.52);
+  edgeG.addColorStop(0,'transparent'); edgeG.addColorStop(1,'rgba(5,5,12,0.9)');
+  ctx.fillStyle=edgeG; ctx.beginPath(); ctx.arc(W/2,H/2,W/2,0,Math.PI*2); ctx.fill();
+}
+
+// ── 적혈구 삼투 ──
+const R_RBC = seededRand(17);
+const rbcCells = Array.from({length:22},()=>({ x:R_RBC(), y:R_RBC(), angle:R_RBC()*Math.PI, size:0.82+R_RBC()*0.36 }));
+
+function drawOsmosisRBC(W, H, t, sol) {
+  ctx.fillStyle='#0a0b10'; ctx.fillRect(0,0,W,H);
+
+  // 용액 tint
+  const tint = sol==='hypo'?'rgba(74,158,255,0.07)': sol==='iso'?'rgba(61,220,132,0.05)':'rgba(255,92,92,0.07)';
+  ctx.fillStyle=tint; ctx.fillRect(0,0,W,H);
+
+  const visibleCount = state.mag<=40?14:state.mag<=100?10:state.mag<=200?6:4;
+  rbcCells.slice(0,visibleCount).forEach((cell,idx)=>{
+    const cx=cell.x*W, cy=cell.y*H;
+    const baseR=W*0.062*cell.size;
+    let rx,ry,spiky=false,alpha=0.85;
+
+    if (sol==='hypo') {
+      const sw=1+t*0.6;
+      rx=baseR*sw; ry=baseR*sw*(0.72+t*0.28);
+      if (t>0.82) alpha=1-(t-0.82)*3.5;
+    } else if (sol==='hyper') {
+      rx=baseR*(1-t*0.38); ry=baseR*(1-t*0.38)*0.65;
+      spiky=t>0.25;
+    } else {
+      rx=baseR; ry=baseR*0.72;
+    }
+
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(cell.angle);
+
+    if (spiky) {
+      // 가시형
+      const spikes=12, outerR=rx, innerR=rx*(0.72+t*0.04);
+      ctx.beginPath();
+      for (let s=0;s<spikes*2;s++) {
+        const a=(s/(spikes*2))*Math.PI*2;
+        const rad=s%2===0?outerR:innerR;
+        const px=Math.cos(a)*rad, py=Math.sin(a)*rad*0.65;
+        s===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.closePath();
+      ctx.fillStyle=rgba(200-t*40,50-t*10,50-t*10,alpha); ctx.fill();
+    } else {
+      const g=ctx.createRadialGradient(0,0,rx*0.08,0,0,rx);
+      if (sol==='hypo') {
+        g.addColorStop(0,rgba(210,55,55,alpha*0.9));
+        g.addColorStop(0.65,rgba(210,55,55,alpha));
+        g.addColorStop(1,rgba(140,30,30,alpha*0.5));
+      } else {
+        g.addColorStop(0,'rgba(210,55,55,0.18)');
+        g.addColorStop(0.5,rgba(210,55,55,alpha));
+        g.addColorStop(1,'rgba(140,30,30,0.88)');
+      }
+      ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fill();
+    }
+
+    // 용혈 파편
+    if (sol==='hypo'&&t>0.82) {
+      const burst=(t-0.82)/0.18;
+      for (let f=0;f<6;f++) {
+        const fa=(f/6)*Math.PI*2+idx; const fd=rx*(0.9+burst);
+        ctx.strokeStyle=rgba(220,60,60,(1-burst)*0.4);
+        ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(Math.cos(fa)*rx*0.5,Math.sin(fa)*ry*0.5);
+        ctx.lineTo(Math.cos(fa)*fd,Math.sin(fa)*fd*0.7); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  });
+
+  const eg=ctx.createRadialGradient(W/2,H/2,W*0.37,W/2,H/2,W*0.52);
+  eg.addColorStop(0,'transparent'); eg.addColorStop(1,'rgba(5,5,12,0.92)');
+  ctx.fillStyle=eg; ctx.beginPath(); ctx.arc(W/2,H/2,W/2,0,Math.PI*2); ctx.fill();
+}
+
+// ══════════════════════════
+//  삼투 실험 UI 관리
+// ══════════════════════════
+function isOsmosisSpecimen() {
+  return state.specimen==='osmosis_onion'||state.specimen==='osmosis_rbc';
+}
+
+function buildSolButtons() {
+  const configs = osmosisSolConfig[state.specimen] || [];
+  ['solBtnsSide','solBtnsMobile'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.innerHTML='';
+    configs.forEach(cfg=>{
+      const btn=document.createElement('button');
+      btn.className='sol-btn';
+      btn.dataset.sol=cfg.sol;
+      btn.innerHTML=`<span class="sdot" style="background:${cfg.color}"></span>${cfg.label}<span class="sconc">${cfg.conc}</span>`;
+      el.appendChild(btn);
+      btn.addEventListener('click',()=>selectSol(cfg.sol));
+    });
+  });
+  // 기본 선택
+  const defaultSol=state.specimen==='osmosis_onion'?'hyper':'iso';
+  selectSol(defaultSol, true);
+}
+
+function selectSol(sol, silent=false) {
+  state.osmosisSol=sol;
+  if (!silent) { stopOsmosis(); state.osmosisT=0; }
+  const configs=osmosisSolConfig[state.specimen]||[];
+
+  ['solBtnsSide','solBtnsMobile'].forEach(id=>{
+    document.getElementById(id).querySelectorAll('.sol-btn').forEach(b=>{
+      const cfg=configs.find(c=>c.sol===b.dataset.sol);
+      b.className='sol-btn'+(b.dataset.sol===sol?' '+cfg.cls:'');
+    });
+  });
+
+  updateOsmosisUI(0);
+  if (!silent) { drawSpecimen(); updateOsmosisProgress(0); }
+}
+
+function updateOsmosisProgress(t) {
+  ['progFillSide','progFillMobile'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.width=(t*100)+'%';
+  });
+  const sec=Math.round(t*OSMOSIS_DURATION/1000);
+  const ts=document.getElementById('progTimeSide'); if(ts) ts.textContent=sec+'s';
+  const tm=document.getElementById('progTimeMobile'); if(tm) tm.textContent=sec+'s';
+}
+
+function updateOsmosisUI(t) {
+  let name='', color='var(--text)', showArrow=false, arrowDir='', arrowColor='var(--blue)';
+
+  if (state.specimen==='osmosis_onion') {
+    if (state.osmosisSol==='hyper') {
+      if (t<0.15)      { name='고장액 투입 — 분리 시작'; color='var(--amber)'; showArrow=true; arrowDir='세포 밖으로'; arrowColor='var(--red)'; }
+      else if (t<0.7)  { name='원형질 분리 진행 중'; color='var(--red)'; showArrow=true; arrowDir='세포 밖으로'; arrowColor='var(--red)'; }
+      else             { name='원형질 분리 완료'; color='var(--red)'; }
+    } else {
+      if (t<0.15)      { name='증류수 투입 — 복귀 시작'; color='var(--amber)'; showArrow=true; arrowDir='세포 안으로'; arrowColor='var(--blue)'; }
+      else if (t<0.8)  { name='원형질 복귀 중'; color='var(--blue)'; showArrow=true; arrowDir='세포 안으로'; arrowColor='var(--blue)'; }
+      else             { name='원형질 복귀 완료'; color='var(--green)'; }
+    }
+  } else {
+    if (state.osmosisSol==='hypo') {
+      if (t<0.2)       { name='저장액 — 팽윤 시작'; color='var(--amber)'; showArrow=true; arrowDir='세포 안으로'; arrowColor='var(--blue)'; }
+      else if (t<0.82) { name='팽윤 (부풀어오름)'; color='var(--blue)'; showArrow=true; arrowDir='세포 안으로'; arrowColor='var(--blue)'; }
+      else             { name='용혈 (파열!)'; color='var(--red)'; }
+    } else if (state.osmosisSol==='iso') {
+      name='정상 이중오목형 유지'; color='var(--green)';
+    } else {
+      if (t<0.2)       { name='고장액 — 수축 시작'; color='var(--amber)'; showArrow=true; arrowDir='세포 밖으로'; arrowColor='var(--red)'; }
+      else if (t<0.7)  { name='수축 (쪼그라듦)'; color='var(--amber)'; showArrow=true; arrowDir='세포 밖으로'; arrowColor='var(--red)'; }
+      else             { name='가시형 적혈구 (Crenation)'; color='var(--red)'; }
+    }
+  }
+
+  ['stateBadgeSide','stateBadgeMobile'].forEach(id=>{
+    const el=document.getElementById(id); if(el){ el.textContent=name; el.style.color=color; }
+  });
+
+  const wa=document.getElementById('waterArrowSide');
+  if (wa) {
+    wa.classList.toggle('visible',showArrow);
+    if (showArrow) {
+      const wd=document.getElementById('waterDirSide'); if(wd){ wd.textContent=arrowDir; wd.style.color=arrowColor; }
+      if (wa) wa.querySelector('.arrow-anim').style.color=arrowColor;
+    }
+  }
+}
+
+function stopOsmosis() {
+  state.osmosisPlaying=false;
+  cancelAnimationFrame(state.osmosisAnimId);
+  state.osmosisLastTime=null;
+  setPlayBtnState(false);
+}
+
+function setPlayBtnState(playing) {
+  ['playBtnSide','playBtnMobile'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.textContent=playing?'⏸ 일시정지':'▶ 시작';
+    el.classList.toggle('paused',playing);
+  });
+}
+
+function osmosisLoop(ts) {
+  if (!state.osmosisPlaying) return;
+  if (!state.osmosisLastTime) state.osmosisLastTime=ts;
+  const dt=ts-state.osmosisLastTime; state.osmosisLastTime=ts;
+  state.osmosisT+=dt/(OSMOSIS_DURATION/state.osmosisSpeed);
+  if (state.osmosisT>=1) { state.osmosisT=1; stopOsmosis(); }
+  drawSpecimen();
+  updateOsmosisUI(state.osmosisT);
+  updateOsmosisProgress(state.osmosisT);
+  if (state.osmosisT<1) state.osmosisAnimId=requestAnimationFrame(osmosisLoop);
+}
+
+['playBtnSide','playBtnMobile'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('click',()=>{
+    if (!isOsmosisSpecimen()) return;
+    if (state.osmosisPlaying) { stopOsmosis(); return; }
+    if (state.osmosisT>=1) state.osmosisT=0;
+    state.osmosisPlaying=true;
+    state.osmosisLastTime=null;
+    setPlayBtnState(true);
+    requestAnimationFrame(osmosisLoop);
+  });
+});
+
+function showOsmosisPanels(show) {
+  document.getElementById('osmosisPanelSide').classList.toggle('visible',show);
+  document.getElementById('osmosisPanelMobile').classList.toggle('visible',show);
+}
+
+// ══════════════════════════
+//  초점 / 조명
+// ══════════════════════════
+function calcBlur() {
+  const c=Math.abs(state.coarse-50), f=Math.abs(state.fine-50)*0.3;
+  return Math.max(0,(c+f)*0.18);
+}
+function updateFocus() {
+  const blur=calcBlur();
+  canvas.style.filter=`blur(${blur}px)`;
+  const la=state.light==='dim'?0.45:state.light==='bright'?0.0:0.15;
+  document.getElementById('focusOverlay').style.background=`rgba(0,0,0,${la+blur*0.02})`;
+}
+
+// ══════════════════════════
+//  드래그
+// ══════════════════════════
+function updateSlidePosition() {
+  const sz=lensOuter.offsetWidth, maxOff=sz*0.6;
+  const ox=Math.max(-maxOff,Math.min(maxOff,state.offsetX));
+  const oy=Math.max(-maxOff,Math.min(maxOff,state.offsetY));
+  canvas.style.left=`calc(50% + ${ox}px)`;
+  canvas.style.top=`calc(50% + ${oy}px)`;
+  canvas.style.transform='translate(-50%,-50%)';
+}
+lensOuter.addEventListener('pointerdown',e=>{ state.dragging=true; state.lastX=e.clientX; state.lastY=e.clientY; lensOuter.setPointerCapture(e.pointerId); document.getElementById('dragHint').style.opacity='0'; });
+lensOuter.addEventListener('pointermove',e=>{ if(!state.dragging)return; const spd=state.mag/100; state.offsetX-=(e.clientX-state.lastX)*spd; state.offsetY-=(e.clientY-state.lastY)*spd; state.lastX=e.clientX; state.lastY=e.clientY; updateSlidePosition(); });
+lensOuter.addEventListener('pointerup',()=>{ state.dragging=false; });
+
+// ══════════════════════════
+//  배율
+// ══════════════════════════
+function setMag(val) {
+  state.mag=parseInt(val); state.offsetX=0; state.offsetY=0;
+  updateSlidePosition();
+  document.getElementById('magHud').textContent='×'+state.mag;
+  document.querySelectorAll('.mag-btn').forEach(b=>b.classList.toggle('active',parseInt(b.dataset.mag)===state.mag));
+  drawSpecimen();
+}
+document.querySelectorAll('.mag-btn').forEach(b=>b.addEventListener('click',()=>setMag(b.dataset.mag)));
+
+// ══════════════════════════
+//  슬라이더 동기화
+// ══════════════════════════
+function syncSliders(id,mirId,valId,key) {
+  const el=document.getElementById(id), mir=document.getElementById(mirId), val=valId?document.getElementById(valId):null;
+  el?.addEventListener('input',()=>{ state[key]=parseInt(el.value); if(mir)mir.value=el.value; if(val)val.textContent=el.value; updateFocus(); });
+  mir?.addEventListener('input',()=>{ state[key]=parseInt(mir.value); if(el)el.value=mir.value; if(val)val.textContent=mir.value; updateFocus(); });
+}
+syncSliders('coarseSlider','mCoarseSlider','coarseVal','coarse');
+syncSliders('fineSlider','mFineSlider','fineVal','fine');
+
+// ══════════════════════════
+//  조명
+// ══════════════════════════
+function setLight(val) {
+  state.light=val;
+  document.querySelectorAll('.light-btn').forEach(b=>b.classList.toggle('active',b.dataset.light===val));
+  updateFocus();
+}
+document.querySelectorAll('.light-btn').forEach(b=>b.addEventListener('click',()=>setLight(b.dataset.light)));
+
+// ══════════════════════════
+//  염색 필터
+// ══════════════════════════
+function setFilter(val) {
+  state.filter=val;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===val));
+  drawSpecimen();
+}
+document.querySelectorAll('.filter-btn').forEach(b=>b.addEventListener('click',()=>setFilter(b.dataset.filter)));
+
+// ══════════════════════════
+//  표본 선택
+// ══════════════════════════
+document.querySelectorAll('.spec-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const prev=state.specimen;
+    state.specimen=btn.dataset.specimen;
+    state.offsetX=0; state.offsetY=0;
+
+    document.querySelectorAll('.spec-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const info=specimenInfo[state.specimen];
+    document.getElementById('infoBox').innerHTML=`<strong>${info.name}</strong>${info.desc}`;
+
+    const isOsmosis=isOsmosisSpecimen();
+    showOsmosisPanels(isOsmosis);
+
+    if (isOsmosis) {
+      // 삼투 표본: 애니메이션 초기화
+      stopOsmosis();
+      state.osmosisT=0;
+      state.osmosisSol=null;
+      buildSolButtons();
+      updateOsmosisProgress(0);
+    }
+
+    document.getElementById('dragHint').style.opacity='1';
+    setTimeout(()=>{ document.getElementById('dragHint').style.opacity='0'; },2000);
+    updateSlidePosition();
+    drawSpecimen();
+  });
+});
+
+// ══════════════════════════
+//  초기화
+// ══════════════════════════
+window.addEventListener('resize',()=>{ resizeCanvas(); updateSlidePosition(); });
+resizeCanvas();
+updateFocus();
+updateSlidePosition();
+setTimeout(()=>{ document.getElementById('dragHint').style.opacity='0'; },3000);
+
+// 시작 시 삼투 패널 바로 열기
+showOsmosisPanels(true);
+buildSolButtons();
+const info = specimenInfo['osmosis_onion'];
+document.getElementById('infoBox').innerHTML = `<strong>${info.name}</strong>${info.desc}`;
+</script>
+</body>
+</html>
